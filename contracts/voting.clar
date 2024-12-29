@@ -1,41 +1,31 @@
 (define-map votes
   { voter: principal }
-  { candidate_id: uint })
+  { count: uint })
 
 (define-data-var voting-start uint u0)
 (define-data-var voting-end uint u0)
 
+;; Public function to set voting start and end block heights
 (define-public (set-voting-period (start uint) (end uint))
   (begin
-    (asserts! (is-eq tx-sender admin) (err u401)) ;; Only admin
-    (asserts! (< start end) (err u400)) ;; Start must be before end
+    (asserts! (>= end start) (err u100)) ;; Ensure end block is after start block
     (var-set voting-start start)
     (var-set voting-end end)
     (ok "Voting period set successfully!")
   ))
 
-(define-public (vote (candidate_id uint))
-  (begin
-    (asserts! (>= block-height (var-get voting-start)) (err u403)) ;; Voting not started
-    (asserts! (<= block-height (var-get voting-end)) (err u403)) ;; Voting ended
-    (asserts! (is-none (map-get votes { voter: tx-sender })) (err u409)) ;; One vote per user
-    (let ((candidate (map-get candidates { id: candidate_id })))
-      (asserts! (is-some candidate) (err u404)) ;; Candidate must exist
-      (map-set votes { voter: tx-sender } { candidate_id: candidate_id })
-      (map-update candidates
-        { id: candidate_id }
-        (fn (data { name: (buff 60), vote_count: uint }) 
-          { name: (get name data), vote_count: (+ (get vote_count data) u1) }))
-      (ok "Vote cast successfully!")
-    )))
+;; Function to check the election status
+(define-read-only (election-status)
+  (let ((start (var-get voting-start))
+        (end (var-get voting-end)))
+    (if (< block-height start)
+      (ok "Not Started")
+      (if (<= block-height end)
+        (ok "In Progress")
+        (ok "Ended")))))
 
-(define-read-only (get-votes (candidate_id uint))
-  (let ((candidate (map-get candidates { id: candidate_id })))
-    (if (is-some candidate)
-      (ok (get vote_count (unwrap! candidate (err u404))))
-      (err u404)
-    )))
-
-(define-read-only (get-results)
-  (map-fold candidates (fn (id uint) (data { name: (buff 60), vote_count: uint }) (tuple (id id) (vote_count (get vote_count data))))
-             []))
+;; Function to get the total number of votes cast
+(define-read-only (get-total-votes)
+  (fold votes
+        (fn (key { voter: principal } acc uint) (+ acc u1))
+        u0))

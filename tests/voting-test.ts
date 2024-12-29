@@ -16,4 +16,5 @@ Clarinet.test({
     let count = chain.callReadOnlyFn("voting", "get-votes", ["'Alice"], deployer.address);
     count.result.expectUint(1);
   },
+
 });
